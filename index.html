@@ -175,8 +175,8 @@
             if (e.key === 'Enter' && !isProcessing) {
                 const message = userInput.value.trim();
                 if (message) {
-                    await sendMessage(message);
                     userInput.value = '';
+                    await sendMessage(message);
                 }
             }
         });
@@ -260,7 +260,6 @@
 
                 const reader = response.body.getReader();
                 const decoder = new TextDecoder();
-                responseElement.innerHTML = '';
 
                 while (true) {
                     const { done, value } = await reader.read();
@@ -278,6 +277,10 @@
                                 const parsed = JSON.parse(data);
                                 const content = parsed.choices[0]?.delta?.content;
                                 if (content) {
+                                    // Clear thinking indicator on first content
+                                    if (!fullResponse) {
+                                        responseElement.innerHTML = '';
+                                    }
                                     fullResponse += content;
                                     responseElement.textContent = fullResponse;
                                     window.scrollTo(0, document.body.scrollHeight);
