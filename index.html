@@ -73,17 +73,19 @@
             display: flex;
             align-items: center;
             margin-top: 20px;
+            position: relative;
         }
 
         #user-input {
             background: transparent;
             border: none;
-            color: #fff;
+            color: #0f0;
             font-family: 'Courier New', monospace;
             font-size: 16px;
             outline: none;
-            flex: 1;
+            width: 100%;
             padding: 5px 0;
+            caret-color: transparent;
         }
 
         .caret {
@@ -92,7 +94,9 @@
             height: 20px;
             background: #0f0;
             animation: blink 1s infinite;
-            margin-left: 2px;
+            position: absolute;
+            left: 15px;
+            pointer-events: none;
         }
 
         @keyframes blink {
@@ -143,16 +147,32 @@
         const inputContainer = document.getElementById('input-container');
         const caret = document.getElementById('caret');
 
-        let conversationHistory = [];
         let isProcessing = false;
+
+        // Update caret position based on input text
+        function updateCaretPosition() {
+            const text = userInput.value;
+            const canvas = document.createElement('canvas');
+            const context = canvas.getContext('2d');
+            context.font = '16px "Courier New", monospace';
+            const textWidth = context.measureText(text).width;
+            // Position after the prompt ("> ") which is ~15px
+            caret.style.left = (15 + textWidth) + 'px';
+        }
 
         // Focus management
         userInput.addEventListener('focus', () => {
             caret.style.display = 'inline-block';
+            updateCaretPosition();
         });
 
         userInput.addEventListener('blur', () => {
             caret.style.display = 'none';
+        });
+
+        userInput.addEventListener('input', updateCaretPosition);
+        userInput.addEventListener('keydown', () => {
+            setTimeout(updateCaretPosition, 0);
         });
 
         // Handle user input
@@ -170,6 +190,11 @@
             isProcessing = true;
             userInput.disabled = true;
 
+            // Create unique IDs for this message's responses
+            const messageId = Date.now();
+            const gptResponseId = `gpt-response-${messageId}`;
+            const qwenResponseId = `qwen-response-${messageId}`;
+
             // Add user message to display
             const messageDiv = document.createElement('div');
             messageDiv.className = 'message';
@@ -184,14 +209,14 @@
             gptColumn.className = 'response-column';
             gptColumn.innerHTML = `
                 <div class="model-label model-gpt">GPT-OSS-20B</div>
-                <div class="response-text model-gpt" id="gpt-response"><span class="loading">Loading...</span></div>
+                <div class="response-text model-gpt" id="${gptResponseId}"><span class="loading">Loading...</span></div>
             `;
 
             const qwenColumn = document.createElement('div');
             qwenColumn.className = 'response-column';
             qwenColumn.innerHTML = `
                 <div class="model-label model-qwen">QWEN3-4B</div>
-                <div class="response-text model-qwen" id="qwen-response"><span class="loading">Loading...</span></div>
+                <div class="response-text model-qwen" id="${qwenResponseId}"><span class="loading">Loading...</span></div>
             `;
 
             responsesContainer.appendChild(gptColumn);
@@ -201,21 +226,20 @@
             // Scroll to bottom
             window.scrollTo(0, document.body.scrollHeight);
 
-            // Query both models simultaneously
-            conversationHistory.push({ role: 'user', content: message });
-
+            // Query both models simultaneously (only send current message, not full history)
             await Promise.all([
-                streamModelResponse(MODELS.gpt, 'gpt-response'),
-                streamModelResponse(MODELS.qwen, 'qwen-response')
+                streamModelResponse(MODELS.gpt, gptResponseId, message),
+                streamModelResponse(MODELS.qwen, qwenResponseId, message)
             ]);
 
             isProcessing = false;
             userInput.disabled = false;
             userInput.focus();
+            updateCaretPosition();
             window.scrollTo(0, document.body.scrollHeight);
         }
 
-        async function streamModelResponse(model, elementId) {
+        async function streamModelResponse(model, elementId, currentMessage) {
             const responseElement = document.getElementById(elementId);
             let fullResponse = '';
 
@@ -227,7 +251,7 @@
                     },
                     body: JSON.stringify({
                         model: model,
-                        messages: conversationHistory,
+                        messages: [{ role: 'user', content: currentMessage }],
                         temperature: 0.7,
                         max_tokens: 500,
                         stream: true
@@ -288,6 +312,7 @@
         // Auto-focus on load
         window.addEventListener('load', () => {
             userInput.focus();
+            updateCaretPosition();
         });
     </script>
 </body>
