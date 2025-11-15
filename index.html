@@ -12,115 +12,139 @@
         }
 
         body {
-            background: #000;
-            color: #0f0;
-            font-family: 'Courier New', monospace;
-            font-size: 16px;
-            line-height: 1.6;
+            background: #fafafa;
+            color: #333;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Helvetica', Arial, sans-serif;
+            font-size: 10px;
+            line-height: 1.5;
             padding: 20px;
             height: 100vh;
             overflow-y: auto;
         }
 
         #terminal {
-            max-width: 1400px;
+            max-width: 1200px;
             margin: 0 auto;
         }
 
         .message {
-            margin-bottom: 20px;
+            margin-bottom: 16px;
         }
 
         .user-message {
-            color: #fff;
-            margin-bottom: 10px;
+            color: #555;
+            margin-bottom: 8px;
+            font-weight: 500;
         }
 
         .prompt {
-            color: #0f0;
+            color: #999;
+            margin-right: 4px;
         }
 
         .responses-container {
             display: flex;
-            gap: 40px;
-            margin-bottom: 20px;
+            gap: 24px;
+            margin-bottom: 16px;
         }
 
         .response-column {
             flex: 1;
+            background: #fff;
+            border: 1px solid #e0e0e0;
+            border-radius: 6px;
+            padding: 12px;
         }
 
         .model-label {
-            font-weight: bold;
-            margin-bottom: 5px;
+            font-weight: 600;
+            margin-bottom: 6px;
+            font-size: 9px;
             text-transform: uppercase;
+            letter-spacing: 0.5px;
         }
 
         .model-gpt {
-            color: #00ffff;
+            color: #6366f1;
         }
 
         .model-qwen {
-            color: #ff00ff;
+            color: #ec4899;
         }
 
         .response-text {
             white-space: pre-wrap;
             word-wrap: break-word;
+            color: #444;
+            line-height: 1.6;
         }
 
         #input-container {
             display: flex;
             align-items: center;
-            margin-top: 20px;
-            position: relative;
+            margin-top: 16px;
+            background: #fff;
+            border: 1px solid #e0e0e0;
+            border-radius: 6px;
+            padding: 8px 12px;
         }
 
         #user-input {
             background: transparent;
             border: none;
-            color: #0f0;
-            font-family: 'Courier New', monospace;
-            font-size: 16px;
+            color: #333;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Helvetica', Arial, sans-serif;
+            font-size: 10px;
             outline: none;
             width: 100%;
-            padding: 5px 0;
-            caret-color: transparent;
+            padding: 0;
         }
 
-        .caret {
-            display: inline-block;
-            width: 10px;
-            height: 20px;
-            background: #0f0;
-            animation: blink 1s infinite;
-            position: absolute;
-            left: 15px;
-            pointer-events: none;
-        }
-
-        @keyframes blink {
-            0%, 49% { opacity: 1; }
-            50%, 100% { opacity: 0; }
+        #user-input::placeholder {
+            color: #aaa;
         }
 
         .loading {
-            color: #888;
+            color: #999;
             font-style: italic;
         }
 
+        .thinking {
+            display: inline-block;
+            color: #999;
+            font-size: 9px;
+        }
+
+        .thinking::after {
+            content: '...';
+            animation: dots 1.5s steps(3, end) infinite;
+        }
+
+        @keyframes dots {
+            0%, 20% { content: '.'; }
+            40% { content: '..'; }
+            60%, 100% { content: '...'; }
+        }
+
+        .timing {
+            color: #999;
+            font-size: 8px;
+            margin-left: 6px;
+            font-weight: normal;
+        }
+
         .error {
-            color: #f00;
+            color: #ef4444;
         }
 
         @media (max-width: 768px) {
             .responses-container {
                 flex-direction: column;
-                gap: 20px;
+                gap: 12px;
             }
 
             body {
-                font-size: 14px;
+                font-size: 9px;
             }
         }
     </style>
@@ -129,9 +153,7 @@
     <div id="terminal">
         <div id="messages"></div>
         <div id="input-container">
-            <span class="prompt">&gt; </span>
-            <input type="text" id="user-input" autofocus />
-            <span class="caret" id="caret"></span>
+            <input type="text" id="user-input" placeholder="Ask a question..." autofocus />
         </div>
     </div>
 
@@ -145,35 +167,8 @@
         const messagesContainer = document.getElementById('messages');
         const userInput = document.getElementById('user-input');
         const inputContainer = document.getElementById('input-container');
-        const caret = document.getElementById('caret');
 
         let isProcessing = false;
-
-        // Update caret position based on input text
-        function updateCaretPosition() {
-            const text = userInput.value;
-            const canvas = document.createElement('canvas');
-            const context = canvas.getContext('2d');
-            context.font = '16px "Courier New", monospace';
-            const textWidth = context.measureText(text).width;
-            // Position after the prompt ("> ") which is ~15px
-            caret.style.left = (15 + textWidth) + 'px';
-        }
-
-        // Focus management
-        userInput.addEventListener('focus', () => {
-            caret.style.display = 'inline-block';
-            updateCaretPosition();
-        });
-
-        userInput.addEventListener('blur', () => {
-            caret.style.display = 'none';
-        });
-
-        userInput.addEventListener('input', updateCaretPosition);
-        userInput.addEventListener('keydown', () => {
-            setTimeout(updateCaretPosition, 0);
-        });
 
         // Handle user input
         userInput.addEventListener('keypress', async (e) => {
@@ -208,15 +203,15 @@
             const gptColumn = document.createElement('div');
             gptColumn.className = 'response-column';
             gptColumn.innerHTML = `
-                <div class="model-label model-gpt">GPT-OSS-20B</div>
-                <div class="response-text model-gpt" id="${gptResponseId}"><span class="loading">Loading...</span></div>
+                <div class="model-label model-gpt">GPT-OSS-20B<span class="timing" id="${gptResponseId}-timing"></span></div>
+                <div class="response-text model-gpt" id="${gptResponseId}"><span class="thinking">Thinking</span></div>
             `;
 
             const qwenColumn = document.createElement('div');
             qwenColumn.className = 'response-column';
             qwenColumn.innerHTML = `
-                <div class="model-label model-qwen">QWEN3-4B</div>
-                <div class="response-text model-qwen" id="${qwenResponseId}"><span class="loading">Loading...</span></div>
+                <div class="model-label model-qwen">QWEN3-4B<span class="timing" id="${qwenResponseId}-timing"></span></div>
+                <div class="response-text model-qwen" id="${qwenResponseId}"><span class="thinking">Thinking</span></div>
             `;
 
             responsesContainer.appendChild(gptColumn);
@@ -235,13 +230,14 @@
             isProcessing = false;
             userInput.disabled = false;
             userInput.focus();
-            updateCaretPosition();
             window.scrollTo(0, document.body.scrollHeight);
         }
 
         async function streamModelResponse(model, elementId, currentMessage) {
             const responseElement = document.getElementById(elementId);
+            const timingElement = document.getElementById(elementId + '-timing');
             let fullResponse = '';
+            const startTime = Date.now();
 
             try {
                 const response = await fetch(API_URL, {
@@ -297,9 +293,15 @@
                     responseElement.innerHTML = '<span class="error">No response received</span>';
                 }
 
+                // Calculate and display timing
+                const duration = ((Date.now() - startTime) / 1000).toFixed(2);
+                timingElement.textContent = `(${duration}s)`;
+
             } catch (error) {
                 console.error('Error:', error);
                 responseElement.innerHTML = `<span class="error">Error: ${escapeHtml(error.message)}</span>`;
+                const duration = ((Date.now() - startTime) / 1000).toFixed(2);
+                timingElement.textContent = `(${duration}s - failed)`;
             }
         }
 
@@ -312,7 +314,6 @@
         // Auto-focus on load
         window.addEventListener('load', () => {
             userInput.focus();
-            updateCaretPosition();
         });
     </script>
 </body>
