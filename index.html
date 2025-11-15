@@ -1,0 +1,294 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FlexLLama Terminal Chat</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: #000;
+            color: #0f0;
+            font-family: 'Courier New', monospace;
+            font-size: 16px;
+            line-height: 1.6;
+            padding: 20px;
+            height: 100vh;
+            overflow-y: auto;
+        }
+
+        #terminal {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+
+        .message {
+            margin-bottom: 20px;
+        }
+
+        .user-message {
+            color: #fff;
+            margin-bottom: 10px;
+        }
+
+        .prompt {
+            color: #0f0;
+        }
+
+        .responses-container {
+            display: flex;
+            gap: 40px;
+            margin-bottom: 20px;
+        }
+
+        .response-column {
+            flex: 1;
+        }
+
+        .model-label {
+            font-weight: bold;
+            margin-bottom: 5px;
+            text-transform: uppercase;
+        }
+
+        .model-gpt {
+            color: #00ffff;
+        }
+
+        .model-qwen {
+            color: #ff00ff;
+        }
+
+        .response-text {
+            white-space: pre-wrap;
+            word-wrap: break-word;
+        }
+
+        #input-container {
+            display: flex;
+            align-items: center;
+            margin-top: 20px;
+        }
+
+        #user-input {
+            background: transparent;
+            border: none;
+            color: #fff;
+            font-family: 'Courier New', monospace;
+            font-size: 16px;
+            outline: none;
+            flex: 1;
+            padding: 5px 0;
+        }
+
+        .caret {
+            display: inline-block;
+            width: 10px;
+            height: 20px;
+            background: #0f0;
+            animation: blink 1s infinite;
+            margin-left: 2px;
+        }
+
+        @keyframes blink {
+            0%, 49% { opacity: 1; }
+            50%, 100% { opacity: 0; }
+        }
+
+        .loading {
+            color: #888;
+            font-style: italic;
+        }
+
+        .error {
+            color: #f00;
+        }
+
+        @media (max-width: 768px) {
+            .responses-container {
+                flex-direction: column;
+                gap: 20px;
+            }
+
+            body {
+                font-size: 14px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div id="terminal">
+        <div id="messages"></div>
+        <div id="input-container">
+            <span class="prompt">&gt; </span>
+            <input type="text" id="user-input" autofocus />
+            <span class="caret" id="caret"></span>
+        </div>
+    </div>
+
+    <script>
+        const API_URL = 'http://100.118.106.2:8090/v1/chat/completions';
+        const MODELS = {
+            gpt: 'gpt-oss-20b-mxfp4',
+            qwen: 'qwen3-4b-instruct-q4_k_m'
+        };
+
+        const messagesContainer = document.getElementById('messages');
+        const userInput = document.getElementById('user-input');
+        const inputContainer = document.getElementById('input-container');
+        const caret = document.getElementById('caret');
+
+        let conversationHistory = [];
+        let isProcessing = false;
+
+        // Focus management
+        userInput.addEventListener('focus', () => {
+            caret.style.display = 'inline-block';
+        });
+
+        userInput.addEventListener('blur', () => {
+            caret.style.display = 'none';
+        });
+
+        // Handle user input
+        userInput.addEventListener('keypress', async (e) => {
+            if (e.key === 'Enter' && !isProcessing) {
+                const message = userInput.value.trim();
+                if (message) {
+                    await sendMessage(message);
+                    userInput.value = '';
+                }
+            }
+        });
+
+        async function sendMessage(message) {
+            isProcessing = true;
+            userInput.disabled = true;
+
+            // Add user message to display
+            const messageDiv = document.createElement('div');
+            messageDiv.className = 'message';
+            messageDiv.innerHTML = `<div class="user-message"><span class="prompt">&gt; </span>${escapeHtml(message)}</div>`;
+            messagesContainer.appendChild(messageDiv);
+
+            // Create response containers
+            const responsesContainer = document.createElement('div');
+            responsesContainer.className = 'responses-container';
+
+            const gptColumn = document.createElement('div');
+            gptColumn.className = 'response-column';
+            gptColumn.innerHTML = `
+                <div class="model-label model-gpt">GPT-OSS-20B</div>
+                <div class="response-text model-gpt" id="gpt-response"><span class="loading">Loading...</span></div>
+            `;
+
+            const qwenColumn = document.createElement('div');
+            qwenColumn.className = 'response-column';
+            qwenColumn.innerHTML = `
+                <div class="model-label model-qwen">QWEN3-4B</div>
+                <div class="response-text model-qwen" id="qwen-response"><span class="loading">Loading...</span></div>
+            `;
+
+            responsesContainer.appendChild(gptColumn);
+            responsesContainer.appendChild(qwenColumn);
+            messageDiv.appendChild(responsesContainer);
+
+            // Scroll to bottom
+            window.scrollTo(0, document.body.scrollHeight);
+
+            // Query both models simultaneously
+            conversationHistory.push({ role: 'user', content: message });
+
+            await Promise.all([
+                streamModelResponse(MODELS.gpt, 'gpt-response'),
+                streamModelResponse(MODELS.qwen, 'qwen-response')
+            ]);
+
+            isProcessing = false;
+            userInput.disabled = false;
+            userInput.focus();
+            window.scrollTo(0, document.body.scrollHeight);
+        }
+
+        async function streamModelResponse(model, elementId) {
+            const responseElement = document.getElementById(elementId);
+            let fullResponse = '';
+
+            try {
+                const response = await fetch(API_URL, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        model: model,
+                        messages: conversationHistory,
+                        temperature: 0.7,
+                        max_tokens: 500,
+                        stream: true
+                    })
+                });
+
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+
+                const reader = response.body.getReader();
+                const decoder = new TextDecoder();
+                responseElement.innerHTML = '';
+
+                while (true) {
+                    const { done, value } = await reader.read();
+                    if (done) break;
+
+                    const chunk = decoder.decode(value);
+                    const lines = chunk.split('\n');
+
+                    for (const line of lines) {
+                        if (line.startsWith('data: ')) {
+                            const data = line.slice(6);
+                            if (data === '[DONE]') continue;
+
+                            try {
+                                const parsed = JSON.parse(data);
+                                const content = parsed.choices[0]?.delta?.content;
+                                if (content) {
+                                    fullResponse += content;
+                                    responseElement.textContent = fullResponse;
+                                    window.scrollTo(0, document.body.scrollHeight);
+                                }
+                            } catch (e) {
+                                // Skip invalid JSON
+                            }
+                        }
+                    }
+                }
+
+                if (!fullResponse) {
+                    responseElement.innerHTML = '<span class="error">No response received</span>';
+                }
+
+            } catch (error) {
+                console.error('Error:', error);
+                responseElement.innerHTML = `<span class="error">Error: ${escapeHtml(error.message)}</span>`;
+            }
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        // Auto-focus on load
+        window.addEventListener('load', () => {
+            userInput.focus();
+        });
+    </script>
+</body>
+</html>
